@@ -70,57 +70,39 @@ export default function SignupPage() {
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsSubmitting(true)
+  setIsSubmitting(true);
 
-    try {
-      // In a real application, this would be an API call to your backend
-      console.log("Form values:", values)
+  try {
+    const response = await fetch("http://localhost:8080/users/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(values),
+    });
 
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+    const data = await response.json();
 
-      // Store user in localStorage for demo purposes
-      const user = {
-        id: Date.now().toString(),
-        fullName: values.fullName,
-        email: values.email,
-        avatar: values.avatar || avatarPreview,
-        passes: [],
-        events: [],
-      }
-
-      // Get existing users or initialize empty array
-      const existingUsers = JSON.parse(localStorage.getItem("users") || "[]")
-
-      // Check if email already exists
-      if (existingUsers.some((u: any) => u.email === values.email)) {
-        toast("Email already exists",{
-          description: "Please use a different email address or login to your account.",
-          style: { backgroundColor: "#fee2e2", color: "#b91c1c" }, 
-        })
-        setIsSubmitting(false)
-        return
-      }
-
-      // Add new user
-      localStorage.setItem("users", JSON.stringify([...existingUsers, user]))
-
-      toast("Account created!",{
-        description: "You have successfully created an account. Please login.",
-      })
-
-      // Redirect to login page
-      navigate("/login")
-    } catch (error) {
-      console.error("Signup error:", error)
-      toast("Signup Failed",{
-        description: "There was an error creating your account. Please try again.",
-        style: { backgroundColor: "#fee2e2", color: "#b91c1c" }, 
-      })
-    } finally {
-      setIsSubmitting(false)
+    if (!response.ok) {
+      throw new Error(data.error || "Signup failed");
     }
+
+    toast("Account created!", {
+      description: "You have successfully created an account. Please login.",
+    });
+
+    navigate("/login");
+  } catch (error: any) {
+    console.error("Signup error:", error.message);
+    toast("Signup Failed", {
+      description: error.message || "There was an error creating your account. Please try again.",
+      style: { backgroundColor: "#fee2e2", color: "#b91c1c" },
+    });
+  } finally {
+    setIsSubmitting(false);
   }
+}
+
 
   return (
     <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12">

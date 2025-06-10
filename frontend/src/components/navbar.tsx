@@ -5,7 +5,7 @@ import logo from '../assets/logos/smec-logo-1.png'
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Menu, X, LogOut, Calendar, Clock, MapPin } from "lucide-react"
 import { Button } from "./ui/button"
-import { useUser } from "../components/context/user-context"
+import { useAuth } from "../components/context/user-context"
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
 import {
   DropdownMenu,
@@ -21,7 +21,7 @@ import { toast } from "sonner"
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false)
   const location = useLocation()
-  const { user, logout } = useUser()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const toggleMenu = () => {

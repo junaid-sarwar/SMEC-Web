@@ -1,102 +1,138 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import axios from "axios";
 
 type Pass = {
-  id: string
-  eventId: string
-  eventName: string
-  purchaseDate: string
-  quantity: number
-}
+  id: string;
+  eventId: string;
+  eventName: string;
+  purchaseDate: string;
+  quantity: number;
+};
 
 type Event = {
-  id: string
-  name: string
-  date: string
-  time: string
-  location: string
-}
+  id: string;
+  name: string;
+  date: string;
+  time: string;
+  location: string;
+};
 
 type User = {
-  id: string
-  fullName: string
-  email: string
-  avatar: string
-  passes: Pass[]
-  events: Event[]
-}
+  id: string;
+  fullName: string;
+  email: string;
+  avatar: string;
+  passes: Pass[];
+  events: Event[];
+};
 
 type UserContextType = {
-  user: User | null
-  isLoading: boolean
-  login: (email: string, password: string) => Promise<boolean>
-  logout: () => void
-  refreshUser: () => void
-}
+  user: User | null;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  register: (fullName: string, email: string, password: string) => Promise<boolean>;
+  refreshUser: () => void;
+};
 
-const UserContext = createContext<UserContextType | undefined>(undefined)
+const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadUser = () => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem("currentUser")
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
-    } else {
-      setUser(null)
+  const loadUser = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setUser(null);
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false)
-  }
+
+    try {
+      const res = await axios.get("http://localhost:8080/users/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setUser(res.data.user);
+    } catch (err) {
+      console.error("Error fetching user:", err);
+      setUser(null);
+      localStorage.removeItem("token");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    loadUser()
-
-    // Add event listener for storage changes
-    window.addEventListener("storage", loadUser)
-
-    return () => {
-      window.removeEventListener("storage", loadUser)
-    }
-  }, [])
+    loadUser();
+  }, []);
 
   const login = async (email: string, password: string) => {
-    // In a real app, this would make an API call
-    const users = JSON.parse(localStorage.getItem("users") || "[]")
-    const user = users.find((u: User) => u.email === email)
+    try {
+      const res = await axios.post("http://localhost:8080/users/login", {
+        email,
+        password,
+      });
 
-    if (user) {
-      setUser(user)
-      localStorage.setItem("currentUser", JSON.stringify(user))
-      // Dispatch storage event to notify other tabs
-      window.dispatchEvent(new Event("storage"))
-      return true
+      const { token, user } = res.data;
+      localStorage.setItem("token", token);
+      setUser(user);
+      return true;
+    } catch (error) {
+      console.error("Login failed:", error);
+      return false;
     }
+  };
 
-    return false
-  }
+  const register = async (fullName: string, email: string, password: string) => {
+    try {
+      const res = await axios.post("http://localhost:8080/users/register", {
+        fullName,
+        email,
+        password,
+        confirmPassword: password,
+      });
+
+      const { token, user } = res.data;
+      localStorage.setItem("token", token);
+      setUser(user);
+      return true;
+    } catch (error) {
+      console.error("Registration failed:", error);
+      return false;
+    }
+  };
 
   const logout = () => {
-    setUser(null)
-    localStorage.removeItem("currentUser")
-    // Dispatch storage event to notify other tabs
-    window.dispatchEvent(new Event("storage"))
-  }
+    localStorage.clear();
+    setUser(null);
+  };
 
   const refreshUser = () => {
-    loadUser()
-  }
+    loadUser();
+  };
 
-  return <UserContext.Provider value={{ user, isLoading, login, logout, refreshUser }}>{children}</UserContext.Provider>
+  return (
+    <UserContext.Provider value={{ user, isLoading, login, logout, register, refreshUser }}>
+      {children}
+    </UserContext.Provider>
+  );
 }
 
-export function useUser() {
-  const context = useContext(UserContext)
-  if (context === undefined) {
-    throw new Error("useUser must be used within a UserProvider")
+export const useAuth = () => {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error("useAuth must be used within a UserProvider");
   }
-  return context
-}
+  return context;
+};

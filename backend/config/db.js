@@ -1,9 +1,9 @@
+// Modified config/db.js to match your existing structure
+
 const sql = require('mssql');
+require('dotenv').config();
 
-require('dotenv').config()
-
-//config for sql server
-
+// Config for SQL Server using your env variable names
 const config = {
     server: process.env.DB_HOST,
     port: parseInt(process.env.DB_PORT),
@@ -17,10 +17,7 @@ const config = {
     }
 };
 
-
-
-//create a connection and export it as a promise
-
+// Create a connection and export it as a promise
 const poolPromise = new sql.ConnectionPool(config)
     .connect()
     .then(pool => {
@@ -28,12 +25,12 @@ const poolPromise = new sql.ConnectionPool(config)
         return pool;
     })
     .catch(err => {
-        console.log("Database connection failed", err)
+        console.log("Database connection failed", err);
         throw err;
     });
 
+// Export both sql and poolPromise
 module.exports = {
     sql,
     poolPromise
 };
-

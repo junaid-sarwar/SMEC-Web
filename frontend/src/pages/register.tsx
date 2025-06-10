@@ -10,7 +10,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "../components/ui/input"
 import { Checkbox } from "../components/ui/checkbox"
 import { toast } from "sonner"
-import { useUser } from "../components/context/user-context"
+import { useAuth } from "../components/context/user-context"
 
 const eventSchedules = {
   coding: { date: "2023-06-15", time: "10:00 AM - 12:30 PM", location: "Lab 1" },
@@ -61,7 +61,7 @@ const eventPrices = {
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { user, refreshUser } = useUser()
+  const { user, refreshUser } = useAuth()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [totalPrice, setTotalPrice] = useState(0)
 

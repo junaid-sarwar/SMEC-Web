@@ -1,31 +1,28 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { Button } from "../components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../components/ui/form"
-import { Input } from "../components/ui/input"
-import { toast } from "sonner"
-import { Lock } from "lucide-react"
-import { Link } from "react-router-dom"
-import { useUser } from '../components/context/user-context'
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
 
+import { Button } from "../components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../components/ui/form";
+import { Input } from "../components/ui/input";
+import { toast } from "sonner";
+import { Lock } from "lucide-react";
+import { useAuth } from "../components/context/user-context";
+
+// Zod schema for validation
 const formSchema = z.object({
-  email: z.string().email({
-    message: "Please enter a valid email address.",
-  }),
-  password: z.string().min(6, {
-    message: "Password must be at least 6 characters.",
-  }),
-})
+  email: z.string().email({ message: "Please enter a valid email address." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+});
 
 export default function LoginPage() {
-  const navigate = useNavigate()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const { login } = useUser()
+  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -33,83 +30,47 @@ export default function LoginPage() {
       email: "",
       password: "",
     },
-  })
+  });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsSubmitting(true)
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    setIsSubmitting(true);
 
     try {
-      console.log("Login attempt:", values)
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Check for admin login
+      // Admin hardcoded login
       if (values.email === "admin@smec.edu.pk" && values.password === "admin123") {
-        // Set authentication state in localStorage
-        localStorage.setItem("isAuthenticated", "true")
-        localStorage.setItem(
-          "adminUser",
-          JSON.stringify({
-            name: "Admin User",
-            email: values.email,
-            role: "administrator",
-          }),
-        )
+        localStorage.setItem("isAuthenticated", "true");
+        localStorage.setItem("adminUser", JSON.stringify({
+          name: "Admin User",
+          email: values.email,
+          role: "administrator",
+        }));
 
         toast("Login Successful", {
           description: "Welcome to the SMEC admin dashboard.",
-        })
+        });
 
-
-
-        // Redirect to admin dashboard
-        navigate("/admin")
-        return
+        navigate("/admin");
+        return;
       }
 
-      // Get users from localStorage
-      const users = JSON.parse(localStorage.getItem("users") || "[]")
-      const user = users.find((u: any) => u.email === values.email)
+      const success = await login(values.email, values.password);
 
-      if (!user) {
-        toast("Login Failed", {
-          description: "Invalid credentials.",
-          style: { backgroundColor: "#fee2e2", color: "#b91c1c" }, // optional
-        })
+      if (!success) throw new Error("Invalid credentials");
 
-        setIsSubmitting(false)
-        return
-      }
+      toast("Login Successful", {
+        description: "Welcome back!",
+      });
 
-      // In a real app, you would hash and verify the password
-      // For demo, we're just checking if the user exists
-      const success = await login(values.email, values.password)
-
-      if (success) {
-        toast(
-          "Login Successful", {
-          description: `Welcome back, ${user.fullName}!`,
-        })
-
-        // Redirect to home page
-        navigate("/")
-      } else {
-        toast("Login Failed",{
-          description: "Invalid credentials. Please try again.",
-          style: { backgroundColor: "#fee2e2", color: "#b91c1c" }, 
-        })
-      }
-    } catch (error) {
-      console.error("Login error:", error)
-      toast("Login Failed",{
-        description: "There was an error logging in. Please try again.",
-        style: { backgroundColor: "#fee2e2", color: "#b91c1c" }, 
-      })
+      navigate("/");
+    } catch (error: any) {
+      toast("Login Failed", {
+        description: error.message || "An error occurred during login.",
+        style: { backgroundColor: "#fee2e2", color: "#b91c1c" },
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12">
@@ -174,5 +135,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
