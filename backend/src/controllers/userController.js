@@ -1,6 +1,9 @@
-// Modified controllers/userController.js to work with your poolPromise
+// controllers/userController.js - MongoDB version with Mongoose
 
-const { sql, poolPromise } = require('../../config/db');
+const User = require('../models/User'); // You'll need to create this model
+const UserDetails = require('../models/UserDetails'); // You'll need to create this model
+const Pass = require('../models/Pass'); // You'll need to create this model
+const UserPass = require('../models/UserPass'); // You'll need to create this model
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -18,36 +21,32 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ error: 'Passwords do not match' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const pool = await poolPromise;
-
     // Check if user already exists
-    const checkResult = await pool.request()
-      .input('email', sql.NVarChar, email)
-      .query('SELECT id FROM AuthUsers WHERE email = @email');
-
-    if (checkResult.recordset.length > 0) {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(409).json({ error: 'User with this email already exists' });
     }
 
-    // Insert into Users table
-    const result = await pool.request()
-      .input('fullName', sql.NVarChar, fullName)
-      .input('email', sql.NVarChar, email)
-      .input('password', sql.NVarChar, hashedPassword)
-      .query(`
-        INSERT INTO AuthUsers (fullName, email, password)
-        OUTPUT INSERTED.id
-        VALUES (@fullName, @email, @password)
-      `);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    res.status(201).json({ message: 'User registered successfully', userId: result.recordset[0].id });
+    // Create new user
+    const user = new User({
+      fullName,
+      email,
+      password: hashedPassword
+    });
+
+    const savedUser = await user.save();
+
+    res.status(201).json({ 
+      message: 'User registered successfully', 
+      userId: savedUser._id 
+    });
   } catch (error) {
     console.error('Error registering user:', error.message);
     res.status(500).json({ error: 'Registration failed' });
   }
 };
-
 
 // POST /users/login - User login
 exports.loginUser = async (req, res) => {
@@ -59,43 +58,36 @@ exports.loginUser = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const pool = await poolPromise;
-
-    // ✅ Correct SQL: fetch user by email only
-    const result = await pool.request()
-      .input('email', sql.NVarChar, email)
-      .query('SELECT * FROM AuthUsers WHERE email = @email');
-
-    if (result.recordset.length === 0) {
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    const user = result.recordset[0];
 
     // Check if password exists
     if (!user.password) {
       return res.status(403).json({ error: 'No password found. Please register again.' });
     }
 
-    // ✅ Compare hashed password using bcrypt
+    // Compare hashed password using bcrypt
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // ✅ Generate JWT Token
+    // Generate JWT Token
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    // ✅ Respond with token and user info
+    // Respond with token and user info
     res.status(200).json({
       message: 'Login successful',
       token,
       user: {
-        id: user.id,
+        id: user._id,
         fullName: user.fullName,
         email: user.email,
         role: user.role,
@@ -112,19 +104,16 @@ exports.saveUserDetails = async (req, res) => {
   try {
     const { userId, universityName, studentID, CNIC, phone } = req.body;
 
-    const pool = await poolPromise;
+    // Create new user details document
+    const userDetails = new UserDetails({
+      userId,
+      universityName,
+      studentID,
+      CNIC,
+      phone
+    });
 
-    // Insert additional details
-    await pool.request()
-      .input('userId', sql.Int, userId)
-      .input('universityName', sql.NVarChar, universityName)
-      .input('studentID', sql.NVarChar, studentID)
-      .input('CNIC', sql.NVarChar, CNIC)
-      .input('phone', sql.NVarChar, phone)
-      .query(`
-        INSERT INTO UserDetails (userId, universityName, studentID, CNIC, phone)
-        VALUES (@userId, @universityName, @studentID, @CNIC, @phone)
-      `);
+    await userDetails.save();
 
     res.status(200).json({ message: 'Details saved successfully' });
   } catch (error) {
@@ -133,25 +122,16 @@ exports.saveUserDetails = async (req, res) => {
   }
 };
 
-
-
 // Get user details by ID
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const pool = await poolPromise;
+    const user = await User.findById(id).select('-password'); // Exclude password
 
-    const result = await pool.request()
-      .input('id', sql.Int, id)
-      .query('SELECT * FROM AuthUsers WHERE id = @id');
-
-    if (result.recordset.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-
-    // Remove sensitive information if needed
-    const user = result.recordset[0];
 
     res.status(200).json(user);
   } catch (error) {
@@ -165,47 +145,35 @@ exports.registerUserPass = async (req, res) => {
   try {
     const { userId, passId, quantity } = req.body;
 
-    // Input validation
-    if (!userId || !universityName || !studentID || !CNIC || !phone) {
-      return res.status(400).json({ error: 'All fields are required' });
+    // Input validation - Fixed the validation fields
+    if (!userId || !passId) {
+      return res.status(400).json({ error: 'UserId and passId are required' });
     }
 
-    const pool = await poolPromise;
-
     // Check if user exists
-    const userResult = await pool.request()
-      .input('userId', sql.Int, userId)
-      .query('SELECT id FROM AuthUsers WHERE id = @userId');
-
-    if (userResult.recordset.length === 0) {
+    const user = await User.findById(userId);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Check if pass exists
-    const passResult = await pool.request()
-      .input('passId', sql.Int, passId)
-      .query('SELECT id FROM Passes WHERE id = @passId');
-
-    if (passResult.recordset.length === 0) {
+    const pass = await Pass.findById(passId);
+    if (!pass) {
       return res.status(404).json({ error: 'Pass not found' });
     }
 
-    // Insert user pass registration
-    const result = await pool.request()
-      .input('userId', sql.Int, userId)
-      .input('passId', sql.Int, passId)
-      .input('quantity', sql.Int, quantity || 1)
-      .query(`
-        INSERT INTO UserPasses (userId, passId, quantity)
-        OUTPUT INSERTED.id
-        VALUES (@userId, @passId, @quantity)
-      `);
+    // Create user pass registration
+    const userPass = new UserPass({
+      userId,
+      passId,
+      quantity: quantity || 1
+    });
 
-    const userPassId = result.recordset[0].id;
+    const savedUserPass = await userPass.save();
 
     res.status(201).json({
       message: 'User registered to pass successfully',
-      userPassId
+      userPassId: savedUserPass._id
     });
   } catch (error) {
     console.error('Error registering user to pass:', error.message);
@@ -218,28 +186,27 @@ exports.getUserPasses = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const pool = await poolPromise;
-
     // Check if user exists
-    const userResult = await pool.request()
-      .input('userId', sql.Int, id)
-      .query('SELECT id FROM AuthUsers WHERE id = @userId');
-
-    if (userResult.recordset.length === 0) {
+    const user = await User.findById(id);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Get all passes registered by the user with pass details
-    const result = await pool.request()
-      .input('userId', sql.Int, id)
-      .query(`
-        SELECT p.id, p.passName, p.description, p.price, up.quantity
-        FROM UserPasses up
-        JOIN Passes p ON up.passId = p.id
-        WHERE up.userId = @userId
-      `);
+    // Get all passes registered by the user with pass details using populate
+    const userPasses = await UserPass.find({ userId: id })
+      .populate('passId', 'passName description price')
+      .select('quantity');
 
-    res.status(200).json(result.recordset);
+    // Transform the data to match the expected format
+    const result = userPasses.map(userPass => ({
+      id: userPass.passId._id,
+      passName: userPass.passId.passName,
+      description: userPass.passId.description,
+      price: userPass.passId.price,
+      quantity: userPass.quantity
+    }));
+
+    res.status(200).json(result);
   } catch (error) {
     console.error('Error fetching user passes:', error.message);
     res.status(500).json({ error: 'Failed to fetch user passes' });
@@ -249,18 +216,21 @@ exports.getUserPasses = async (req, res) => {
 // GET /users/me - Return current authenticated user
 exports.getCurrentUser = async (req, res) => {
   try {
-    const pool = await poolPromise
-    const result = await pool.request()
-      .input('userId', sql.Int, req.user.id)
-      .query('SELECT id, fullName, email FROM AuthUsers WHERE id = @userId')
-
-    if (result.recordset.length === 0) {
-      return res.status(404).json({ error: 'User not found' })
+    const user = await User.findById(req.user.id).select('fullName email');
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    return res.json({ user: result.recordset[0] })
+    return res.json({ 
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email
+      }
+    });
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Server error' })
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
-}
+};
