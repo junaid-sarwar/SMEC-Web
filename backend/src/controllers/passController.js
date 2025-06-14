@@ -1,8 +1,3 @@
-// Modified controllers/passController.js to work with your poolPromise
-
-const { sql, poolPromise } = require('../../config/db');
-
-// Add a new pass
 exports.createPass = async (req, res) => {
   try {
     const { passName, description, price } = req.body;
@@ -12,24 +7,18 @@ exports.createPass = async (req, res) => {
       return res.status(400).json({ error: 'Pass name and price are required' });
     }
     
-    const pool = await poolPromise;
+    // Create new pass
+    const pass = new Pass({
+      passName,
+      description,
+      price
+    });
     
-    // Insert new pass
-    const result = await pool.request()
-      .input('passName', sql.NVarChar, passName)
-      .input('description', sql.NVarChar, description || null) // Changed to NVarChar since TEXT might cause issues
-      .input('price', sql.Decimal(10, 2), price)
-      .query(`
-        INSERT INTO Passes (passName, description, price)
-        OUTPUT INSERTED.id
-        VALUES (@passName, @description, @price)
-      `);
-    
-    const passId = result.recordset[0].id;
+    const savedPass = await pass.save();
     
     res.status(201).json({
       message: 'Pass created successfully',
-      passId
+      passId: savedPass._id
     });
   } catch (error) {
     console.error('Error creating pass:', error.message);
@@ -42,17 +31,12 @@ exports.getPassById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('id', sql.Int, id)
-      .query('SELECT * FROM Passes WHERE id = @id');
-    
-    if (result.recordset.length === 0) {
+    const pass = await Pass.findById(id);
+    if (!pass) {
       return res.status(404).json({ error: 'Pass not found' });
     }
     
-    res.status(200).json(result.recordset[0]);
+    res.status(200).json(pass);
   } catch (error) {
     console.error('Error fetching pass:', error.message);
     res.status(500).json({ error: 'Failed to fetch pass details' });
@@ -64,27 +48,17 @@ exports.getPassEvents = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const pool = await poolPromise;
-    
     // Check if pass exists
-    const passResult = await pool.request()
-      .input('passId', sql.Int, id)
-      .query('SELECT id FROM Passes WHERE id = @passId');
-    
-    if (passResult.recordset.length === 0) {
+    const pass = await Pass.findById(id);
+    if (!pass) {
       return res.status(404).json({ error: 'Pass not found' });
     }
     
     // Get all events associated with the pass
-    const result = await pool.request()
-      .input('passId', sql.Int, id)
-      .query(`
-        SELECT id, title, location, eventDate, startTime, endTime
-        FROM Events
-        WHERE passId = @passId
-      `);
+    const events = await Event.find({ passId: id })
+      .select('title location eventDate startTime endTime');
     
-    res.status(200).json(result.recordset);
+    res.status(200).json(events);
   } catch (error) {
     console.error('Error fetching pass events:', error.message);
     res.status(500).json({ error: 'Failed to fetch pass events' });
